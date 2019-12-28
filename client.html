@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+   <head>
+      <title>ChatSite!</title>
+      <!-- <link rel="stylesheet" href="decor.css" type="text/css"> -->
+      <script src="/socket.io/socket.io.js"></script>
+      <script src="http://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+      <style>
+
+         .header { grid-area: header; text-align: center;}
+         .menu { grid-area: menu; text-align: left; background-color: rgba(255, 255, 255, 0.9);}
+         .main { grid-area: main; text-align: left; background-color: rgba(255, 255, 255, 0.9);}
+         .footer { grid-area: footer; text-align: left; background-color: white;}
+
+         .grid-container {
+         display: grid;
+         grid-template-areas:
+            'header header header header header header'
+            'menu main main main main main'
+            'menu footer footer footer footer footer';
+         grid-gap: 5px;
+         background-color: #2196F3;
+         padding: 10px;
+         }
+
+         .grid-container > div {
+         padding: 10px 0;
+         font-size: 20px;
+         }
+
+      </style>
+      <script>
+      var socketio = io.connect();
+      let username = null;
+      let usermade = false;
+      let room = null;
+      let roomjoined = false;
+      $("#allrooms").hide();
+      $("#newroom").hide();
+
+      // Create class for rooms
+      let Room = function(name, creator, password){
+         this.name=name; 
+         this.creator = creator;
+         this.password = password; 
+         this.banned = [];
+         this.users = [];
+         this.badwords = [];
+      }
+
+      socketio.on("message_to_client",function(data) {
+         //Append an HR thematic break and the escaped HTML of the new message
+         document.getElementById("chatlog").innerHTML += "<p><strong>"+data.user+"</strong>: "+data.message+"</p>";
+      });
+
+
+      socketio.on("loggedin",function(data) {
+         //Append an HR thematic break and the escaped HTML of the new message
+         username = data['user'];
+         usermade = true;
+         document.getElementById("name").innerHTML = "";
+         document.getElementById("name").appendChild(document.createTextNode(username));
+         document.getElementById("message").innerHTML += "<p><br>Comment:</p>";
+         document.getElementById("message").innerHTML += "<input type=text id=message_input />";
+         document.getElementById("message").innerHTML += "<button onclick=sendMessage()>Send</button>";
+         $("#allrooms").show();
+         $("#newroom").show();
+      });
+
+      socketio.on("allusers",function(data) {
+         //Append an HR thematic break and the escaped HTML of the new message
+         let i=0;
+         document.getElementById("allusers").innerHTML = "";
+         document.getElementById("allusers").appendChild(document.createElement("br"));
+         document.getElementById("allusers").appendChild(document.createTextNode("All Current Users:"));
+         document.getElementById("allusers").appendChild(document.createElement("br"));
+         for(i=0; i<data.length; i++){
+            document.getElementById("allusers").appendChild(document.createTextNode(data[i]));
+            document.getElementById("allusers").appendChild(document.createElement("br"));
+         }
+          window.allUsers = data; 
+         
+      });
+
+
+      // function to manage users
+      socketio.on("manageMembers",function(room) {
+         // modify the user management div
+         let $div = $("#manageUsers"); 
+         $div.empty();
+         // dropdown menu for kick users 
+         $menu = $("<select></select>").attr("id", "menuKickUsers");
+         $div.append($menu);
+         $btn = $("<button></button>").attr("id", "btnKickUsers");
+         $btn.attr("type", "button");
+         $btn.text("Kick");
+         $div.append($btn);
+         for(i=0; i<room.users.length; i++){
+            if (room.users[i] != room.creator ){
+               let $option = $("<option></option>").attr("value", room["users"][i]);
+               $option.text(room["users"][i]);
+               $menu.append($option);   
+            }
+         }
+         let kickedUser = $('#menuKickUsers option:selected').val();
+         $("#menuKickUsers").change(
+               () => {
+                  kickedUser = $('#menuKickUsers option:selected').val();
+               }  
+         )
+         $btn.click(()=>{
+            socketio.emit("kickusers", {"roomObj": room, "kickedUser": kickedUser});
+         });
+
+         // dropdown menu for ban users
+         let allUsers = window.allUsers; 
+         $menu = $("<select></select>").attr("id", "menuBanUsers");
+         $div.append($menu);
+         $btn = $("<button></button>").attr("id", "btnBanUsers");
+         $btn.attr("type", "button");
+         $btn.text("Ban");
+         $div.append($btn);
+         for(i=0; i<allUsers.length; i++){
+            if (allUsers[i] != room.creator ){
+               let $option = $("<option></option>").attr("value", allUsers[i]);
+               $option.text(allUsers[i]);
+               $menu.append($option);   
+            }
+         }
+         let bannedUser = $('#menuBanUsers option:selected').val();
+         $("#menuBanUsers").change(
+               () => {
+                  bannedUser = $('#menuBanUsers option:selected').val();
+               }  
+         )
+         $btn.click(()=>{
+            socketio.emit("banusers", {"roomObj": room, "bannedUser": bannedUser});
+         });
+      });
+
+      socketio.on("roomusers",function(data) {
+         //Append an HR thematic break and the escaped HTML of the new message
+         let i=0;
+         if(data != null){
+            document.getElementById("allusers").appendChild(document.createElement("br"));
+            document.getElementById("allusers").appendChild(document.createTextNode("Users in Current Room:"));
+            document.getElementById("allusers").appendChild(document.createElement("br"));
+            for(i=0; i<data.users.length; i++){
+               document.getElementById("allusers").appendChild(document.createTextNode(data.users[i]));
+               document.getElementById("allusers").appendChild(document.createElement("br"));
+            }
+            let $div = $("#allusers"); 
+            // dropdown menu for kick users 
+            $menu = $("<select></select>").attr("id", "dm");
+            $div.append($menu);
+            $btn = $("<button></button>").attr("id", "btndm");
+            $btn.attr("type", "button");
+            $btn.text("Private Message");
+            $div.append($btn);
+            for(i=0; i<data.users.length; i++){
+               if (data.users[i] != data.creator ){
+                  let $option = $("<option></option>").attr("value", data["users"][i]);
+                  $option.text(data["users"][i]);
+                  $menu.append($option);   
+               }
+            }
+            let otherUser = $('#dm option:selected').val();
+            $("#dm").change(
+                  () => {
+                     otherUser = $('#dm option:selected').val();
+                  }  
+            )
+            $btn.click(()=>{
+               alert("DM User: "+otherUser);
+               socketio.emit("dm", {user1:username, user2:otherUser, room:data})
+
+            });
+         }
+      });
+
+      socketio.on("userexist", function(data) {
+         alert ("Username taken, please choose a new name.");
+      });
+
+
+      // @@@@TODO this is added to room list
+      socketio.on("allrooms", data => {
+         if(!usermade){
+            $("#allrooms").hide();
+            $("#newroom").hide();
+         }
+         let divRoom = $("#allrooms");
+         divRoom.empty();
+         let table = $("<table></table>").attr("id", "tableRoom");
+         let th = $("<th></th>").text("Room");
+         let th2 = $("<th></th>").text("Creator");
+         let th3 = $("<th></th>").text("Password");
+
+         table.append(th);
+         table.append(th2);
+         table.append(th3);
+
+
+         for (let i=0; i<data.length; i++){
+            let tr = $("<tr></tr>")
+            let td1 = $("<td></td>").text(data[i].name);
+            let td4 = $("<td></td>").text(data[i].creator);
+            let td3 = $("<td></td>");
+            let pass = $("<input>").attr("id", "passcode"+i);
+            if(data[i].password==null || data[i].password==""){
+               pass = "";
+            }
+            td3.append(pass);
+            let td2 = $("<td></td>");
+            let btn = $("<button></button>");
+            btn.text("Join");
+            btn.click(() =>{
+               let whatever = "#passcode"+i;
+               if(roomjoined){
+                  alert("You are already in a room!");
+               }
+               else{
+                  let name = data[i];
+                  if(data[i].password == null){
+                     alert("Joined: "+ data[i].name);
+                     joinRoom(data[i]);
+                  }
+                  else{
+                     if(data[i].password == $(whatever).val() || data[i].password == pass){
+                        alert("Joined: "+ data[i].name);
+                        joinRoom(data[i]);
+                     }
+                     else{
+                        alert("Wrong Password!");
+                     }
+                  }
+               }
+            });
+            td2.append(btn);
+
+            tr.append(td1, td4, td3, td2);
+            table.append(tr);
+         }
+
+         divRoom.append(table);
+         
+         
+      })
+
+      socketio.on("userexist", function(data) {
+         alert ("Username taken, please choose a new name.");
+      });
+
+      socketio.on("roomexist", function(data) {
+         alert ("Room taken, please choose a new name.");
+      });
+
+      socketio.on("roomnoexist", function(data) {
+         room = data;
+         if(!roomjoined){
+            roomjoined = true;
+            $("#room").text("You have created room " + data.name + " and are the owner.");
+            let btn = $("<button></button>").attr("id", "leaveRoom");
+            btn.text("Leave");
+               btn.click(() =>{
+                  leaveRoom(data);
+               });
+            $("body").append(btn);
+            if(username == room.creator){
+               let btn = $("<button></button>").attr("id", "deleteRoom");
+               btn.text("Delete Room");
+                  btn.click(() =>{
+                     //let name = data[i];
+                     deleteRoom(data);
+                  });
+               $("body").append(btn); 
+            }
+
+            document.getElementById("message").innerHTML += "<p><br>Censor Words:</p>";
+            document.getElementById("message").innerHTML += "<input type=text id=badwords />";
+            document.getElementById("message").innerHTML += "<button onclick=banword()>Ban</button>";
+         }
+      });
+
+      socketio.on("roomnoexist2", function(data) {
+         room = data;
+         if(!roomjoined){
+            roomjoined = true;
+            $("#room").text("PRIVATE MESSAGING MODE");
+            let btn = $("<button></button>").attr("id", "leaveRoom");
+            btn.text("Leave");
+               btn.click(() =>{
+                  leaveRoom(data);
+               });
+            $("body").append(btn);
+         }
+      });
+
+
+
+      // react to being kicked out
+      socketio.on("gotKicked", function(data) {
+         alert ("You have been moved out of the group chat. You will now enter the global chat.");
+          
+         leaveRoom(data);
+      });
+
+      socketio.on("gotBanned", function(data) {
+         alert ("You have been banned from entering this room.");
+         $("#room").empty();
+         $("#room").append($("<p></p>").text("You are banned from entering that room. You are back in the global chat now."));
+         $("#leaveRoom").remove();
+      });
+
+      socketio.on("dmleave", function(data) {
+         alert ("You are sliding into the DMs with "+data.user);
+         leaveRoom(data.room);
+         //create new room for users
+         makeRoom2(new Room(data.roomname, data.creator, ""));
+      });
+      
+      socketio.on("nopebadword", function(data) {
+         alert ("Hey! Watch that language!");
+      });
+
+      function sendMessage(){
+         let msg = document.getElementById("message_input").value;
+         if (room != null){
+            socketio.emit("message_to_server", {
+            message:msg, 
+            "ifJoined": roomjoined, 
+            "roomJoined": room["name"]
+         });
+         }else{
+            socketio.emit("message_to_server", {
+            message:msg, 
+            "ifJoined": false, 
+            "roomJoined": null
+         });
+         }
+         
+      }
+
+      function banword(){
+         let msg = document.getElementById("badwords").value;
+         socketio.emit("ban", msg);
+         alert("Banned word: " + msg);
+         
+      }
+
+      function sendName(){
+         username = document.getElementById("username").value;
+         var msg = document.getElementById("username").value;
+         socketio.emit("user_to_server", {user:msg});
+
+      }
+
+      function joinRoom(data){
+         room = data; // to assign the room name to a global var for future use
+         if(!roomjoined){
+            roomjoined = true;
+            $("#room").text("You are in room " + data.name);
+            let btn = $("<button></button>").attr("id", "leaveRoom");
+            btn.text("Leave");
+               btn.click(() =>{
+                  //let name = data[i];
+                  leaveRoom(data);
+               });
+            $("body").append(btn); 
+            if(username == room.creator){
+               let btn = $("<button></button>").attr("id", "deleteRoom");
+               btn.text("Delete Room");
+                  btn.click(() =>{
+                     //let name = data[i];
+                     deleteRoom(data);
+                  });
+               $("body").append(btn); 
+            }
+            socketio.emit("join", data);
+         }
+      }
+
+      function makeRoom(data){
+         room = data;
+         if(!roomjoined){
+            socketio.emit("create", data);
+         }
+      }
+
+      function makeRoom2(data){
+         room = data;
+         if(!roomjoined){
+            socketio.emit("create2", data);
+         }
+      }
+
+      function leaveRoom(name){
+         room = null;
+         roomjoined = false;
+         $("#room").text("You have left room " + name.name);
+         socketio.emit("leave", name);
+         $("#leaveRoom").remove();
+         $("#deleteRoom").remove();
+      }
+
+      function deleteRoom(name){
+         room = null;
+         roomjoined = false;
+         $("#room").text("You have deleted room " + name.name);
+         socketio.emit("deleteRoom", name);
+         $("#leaveRoom").remove();
+         $("#deleteRoom").remove();
+      }
+
+
+
+      </script>
+   </head>
+   <body>
+      <div class="grid-container">
+      <h1 class="header">Fun Chats</h1>
+      <div class="menu"> 
+         <div  id="name">
+            <label >Username: </label>
+            <input type=text id="username"/>
+            <button id = "usernameclick" onclick="sendName()">Enter</button>
+         </div>
+         <div id="room"></div><hr />
+         <div id="allusers"></div><hr />
+         <div id="manageUsers"></div>
+         <div id="allrooms"></div><hr />
+         <div id="newroom">
+            <p>Create Room</p>
+            <table>
+                  <tr>
+                  <th>Room</th>
+                  <th>Password(optional)</th> 
+                  </tr>
+                  <tr>
+                  <td><input type=text id="newroomname"/></td>
+                  <td><input type=text id="newroompass"/></td>
+                  </tr>
+               </table>
+            <button onclick="makeRoom(new Room(newroomname.value, username, newroompass.value))">Create</button>
+         </div> <hr />
+      </div>
+      <div class="main" id="chatlog"></div>
+      <div class="footer" id="message"></div>
+      </div>
+      <script>
+            $("#allrooms").hide();
+            $("#newroom").hide();
+         </script>
+   </body>
+</html>
